@@ -1,9 +1,8 @@
 import { commands, CompleteResult, VimCompleteItem, ExtensionContext, listManager, sources, window, workspace } from 'coc.nvim';
 import DemoList from './lists';
-
+import fs from 'fs';
 
 export async function activate(context: ExtensionContext): Promise<void> {
-
     context.subscriptions.push(
         commands.registerCommand('coc-gitcomp.Command', async () => {
             window.showMessage(`coc-gitcomp Commands works!`);
@@ -19,10 +18,16 @@ export async function activate(context: ExtensionContext): Promise<void> {
                 // console.log(workspace.root)
                 // console.log("getCompleteItems");
                 // const items = await getCompletionItems();
-                const items = executeShell(`git -C ${workspace.root} branch`)
-                    .then(content => generateBranches(content))
-                    .then(branches => getCompletionItems(branches))
-                return items;
+                let git_dir = workspace.root + '/.git';
+                if (fs.existsSync(git_dir)) {
+                    const items = executeShell(`git -C ${workspace.root} branch`)
+                        .then((content) => generateBranches(content))
+                        .then((branches) => generateCompletionItems(branches));
+                    return items;
+                } else {
+                    // return Promise.resolve({ items: [] });
+                    return { items: [] };
+                }
             },
         }),
 
@@ -45,8 +50,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     );
 }
 
-async function getCompletionItems(branches: string[]): Promise<CompleteResult> {
-
+async function generateCompletionItems(branches: string[]): Promise<CompleteResult> {
     const completeItems: VimCompleteItem[] = new Array();
     for (var branch of branches) {
         let item: VimCompleteItem = { word: branch, menu: '[coc-gitcomp]' };
@@ -58,7 +62,7 @@ async function getCompletionItems(branches: string[]): Promise<CompleteResult> {
 }
 
 async function generateBranches(content: string): Promise<string[]> {
-    const branches: Array<string> = new Array()
+    const branches: Array<string> = new Array();
     for (let l of content.split('\n')) {
         let l1 = l.replace(/\s/g, '');
         let l2 = l1.replace(/\*/g, '');
