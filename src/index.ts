@@ -2,52 +2,62 @@ import { commands, CompleteResult, VimCompleteItem, ExtensionContext, listManage
 import DemoList from './lists';
 import fs from 'fs';
 
+const completeItemsMap: Map<string, CompleteResult> = new Map()
+
 export async function activate(context: ExtensionContext): Promise<void> {
-    context.subscriptions.push(
-        commands.registerCommand('coc-gitcomp.Command', async () => {
-            window.showMessage(`coc-gitcomp Commands works!`);
-        }),
-
-        listManager.registerList(new DemoList(workspace.nvim)),
-
-        sources.createSource({
-            name: 'coc-gitcomp completion source', // unique id
-            doComplete: async (opt) => {
-                // console.log(opt.filepath)
-                // console.log(workspace.workspaceFolder)
-                // console.log(workspace.root)
-                // console.log("getCompleteItems");
-                // const items = await getCompletionItems();
-                let git_dir = workspace.root + '/.git';
-                if (fs.existsSync(git_dir)) {
-                    const items = executeShell(`git -C ${workspace.root} branch`)
-                        .then((content) => generateBranches(content))
-                        .then((branches) => generateCompletionItems(branches));
-                    return items;
+    let commandRegenerateBranches = commands.registerCommand('gitcomp.regenerateBranches', async () => {
+        let git_dir = workspace.root + '/.git';
+        const items = await createCompletionItems();
+        completeItemsMap.set(git_dir, items);
+    })
+    let listDemo = listManager.registerList(new DemoList(workspace.nvim))
+    let completeSource = sources.createSource({
+        name: 'coc-gitcomp completion source', // unique id
+        doComplete: async (opt) => {
+            let git_dir = workspace.root + '/.git';
+            if (fs.existsSync(git_dir)) {
+                if (completeItemsMap.has(git_dir)) {
+                    let completeItems = completeItemsMap.get(git_dir)
+                    return completeItems
                 } else {
-                    // return Promise.resolve({ items: [] });
-                    return { items: [] };
+                    const items = await createCompletionItems();
+                    completeItemsMap.set(git_dir, items);
+                    return items;
                 }
-            },
-        }),
-
-        workspace.registerKeymap(
-            ['n'],
-            'gitcomp-keymap',
-            async () => {
-                window.showMessage(`registerKeymap`);
-            },
-            { sync: false }
-        ),
-
-        workspace.registerAutocmd({
-            event: 'InsertLeave',
-            request: true,
-            callback: () => {
-                window.showMessage(`registerAutocmd on InsertLeave`);
-            },
-        })
+            } else {
+                // return Promise.resolve({ items: [] });
+                return { items: [] };
+            }
+        },
+    })
+    let keyMap = workspace.registerKeymap(
+        ['n'],
+        'gitcomp-keymap',
+        async () => {
+            window.showMessage(`registerKeymap`);
+        },
+        { sync: false }
+    )
+    let autoCommand = workspace.registerAutocmd({
+        event: 'InsertLeave',
+        request: true,
+        callback: () => {
+            window.showMessage(`registerAutocmd on InsertLeave`);
+        },
+    })
+    context.subscriptions.push(
+        commandRegenerateBranches,
+        listDemo,
+        completeSource,
+        keyMap,
+        autoCommand,
     );
+}
+
+async function createCompletionItems(): Promise<CompleteResult> {
+    return executeShell(`git -C ${workspace.root} branch`)
+        .then((content) => generateBranches(content))
+        .then((branches) => generateCompletionItems(branches));
 }
 
 async function generateCompletionItems(branches: string[]): Promise<CompleteResult> {
@@ -63,8 +73,8 @@ async function generateCompletionItems(branches: string[]): Promise<CompleteResu
 
 async function generateBranches(content: string): Promise<string[]> {
     const branches: Array<string> = new Array();
-    for (let l of content.split('\n')) {
-        let l1 = l.replace(/\s/g, '');
+    for (let l0 of content.split('\n')) {
+        let l1 = l0.replace(/\s/g, '');
         let l2 = l1.replace(/\*/g, '');
         if (l2.length != 0) {
             branches.push(l2);
